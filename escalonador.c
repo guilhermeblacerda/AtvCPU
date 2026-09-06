@@ -78,3 +78,91 @@ bool ler_configuracao(const char* nome_arquivo, ConfiguracaoEscalonador* config)
     fclose(arquivo);
     return true;
 }
+
+int prioridade_rate(Tarefa* tarefa) {
+    return tarefa->periodo;
+}
+
+void simular_rate(ConfiguracaoEscalonador* config) {
+    printf("SIMULAÇÃO RATE-MONOTONIC\n");
+    
+    int tempo_atual = 0;
+    Tarefa* tarefa_atual = NULL;
+    bool ocioso = true;
+    
+    while (tempo_atual < config->tempo_total) {
+        for (int i = 0; i < config->num_tarefas; i++) {
+            Tarefa* tarefa = &config->tarefas[i];
+            if (tempo_atual >= tarefa->proxima_chegada) {
+                if (!tarefa->ativa) {
+                    tarefa->ativa = true;
+                    tarefa->rajada_restante = tarefa->rajada;
+                    tarefa->prazo_absoluto = tempo_atual + tarefa->prazo;
+                }
+                tarefa->proxima_chegada += tarefa->periodo;
+            }
+        }
+        
+        for (int i = 0; i < config->num_tarefas; i++) {
+            Tarefa* tarefa = &config->tarefas[i];
+            if (tarefa->ativa && tempo_atual >= tarefa->prazo_absoluto && 
+                tarefa->rajada_restante > 0) {
+                tarefa->prazos_perdidos++;
+                tarefa->ativa = false;
+                tarefa->rajada_restante = 0;
+                printf("[%s] Perdeu prazo em t=%d\n", tarefa->nome, tempo_atual);
+            }
+        }
+        
+        Tarefa* tarefa_selecionada = NULL;
+        int melhor_prioridade = -1;
+        
+        for (int i = 0; i < config->num_tarefas; i++) {
+            Tarefa* tarefa = &config->tarefas[i];
+            if (tarefa->ativa && tarefa->rajada_restante > 0) {
+                int prioridade = prioridade_rate(tarefa);
+                if (tarefa_selecionada == NULL || prioridade < melhor_prioridade || 
+                    (prioridade == melhor_prioridade && i < tarefa_selecionada - config->tarefas)) {
+                    tarefa_selecionada = tarefa;
+                    melhor_prioridade = prioridade;
+                }
+            }
+        }
+        
+        if (tarefa_selecionada != NULL) {
+            if (tarefa_atual != tarefa_selecionada) {
+                printf("[%s] Executa em t=%d\n", tarefa_selecionada->nome, tempo_atual);
+                tarefa_atual = tarefa_selecionada;
+                ocioso = false;
+            }
+            
+            tarefa_selecionada->rajada_restante--;
+            if (tarefa_selecionada->rajada_restante == 0) {
+                tarefa_selecionada->execucoes_completas++;
+                tarefa_selecionada->ativa = false;
+                printf("[%s] Completou execução em t=%d\n", 
+                       tarefa_selecionada->nome, tempo_atual + 1);
+                tarefa_atual = NULL;
+                ocioso = true;
+            }
+        } else {
+            if (!ocioso) {
+                printf("ocioso em t=%d\n", tempo_atual);
+                ocioso = true;
+                tarefa_atual = NULL;
+            }
+        }
+        
+        tempo_atual++;
+    }
+    
+    printf("\n=== RESULTADOS ===\n");
+    for (int i = 0; i < config->num_tarefas; i++) {
+        Tarefa* tarefa = &config->tarefas[i];
+        if (tarefa->ativa && tarefa->rajada_restante > 0) {
+            printf("[%s] Morta (não terminou até o fim da simulação)\n", tarefa->nome);
+        }
+        printf("[%s] Completou: %d, Perdidas: %d\n", 
+               tarefa->nome, tarefa->execucoes_completas, tarefa->prazos_perdidos);
+    }
+}
