@@ -254,3 +254,69 @@ void simular_edf(ConfiguracaoEscalonador* config) {
                tarefa->nome, tarefa->execucoes_completas, tarefa->prazos_perdidos);
     }
 }
+
+#include "escalonador.h"
+
+int main(int argc, char* argv[]) {
+    if (argc != 3) {
+        fprintf(stderr, "Erro: Número incorreto de argumentos\n");
+        fprintf(stderr, "Uso: %s <rate|edf> <arquivo_entrada>\n", argv[0]);
+        return 1;
+    }
+    
+    char* algoritmo = argv[1];
+    if (strcmp(algoritmo, "rate") != 0 && strcmp(algoritmo, "edf") != 0) {
+        fprintf(stderr, "Erro: Algoritmo deve ser 'rate' ou 'edf'\n");
+        return 1;
+    }
+    
+    char login[10];
+    strcpy(login, "mla");
+    
+    ConfiguracaoEscalonador config;
+    strcpy(config.login, login);
+    
+    if (!ler_configuracao(argv[2], &config)) {
+        return 1;
+    }
+    
+    if (strcmp(algoritmo, "rate") == 0) {
+        simular_rate(&config);
+    } else {
+        simular_edf(&config);
+    }
+    
+    char nome_arquivo_saida[50];
+    sprintf(nome_arquivo_saida, "%s_%s.out", algoritmo, login);
+    
+    FILE* saida = fopen(nome_arquivo_saida, "w");
+    if (!saida) {
+        fprintf(stderr, "Erro: Não foi possível criar arquivo de saída\n");
+        return 1;
+    }
+    
+    fprintf(saida, "EXECUTION BY %s\n", algoritmo);
+    
+    fprintf(saida, "\nLOST DEADLINES\n");
+    for (int i = 0; i < config.num_tarefas; i++) {
+        fprintf(saida, "[%s] %d\n", config.tarefas[i].nome, 
+                config.tarefas[i].prazos_perdidos);
+    }
+    
+    fprintf(saida, "\nCOMPLETE EXECUTION\n");
+    for (int i = 0; i < config.num_tarefas; i++) {
+        fprintf(saida, "[%s] %d\n", config.tarefas[i].nome, 
+                config.tarefas[i].execucoes_completas);
+    }
+    
+    fprintf(saida, "\nKILLED\n");
+    for (int i = 0; i < config.num_tarefas; i++) {
+        int morta = (config.tarefas[i].ativa && 
+                     config.tarefas[i].rajada_restante > 0) ? 1 : 0;
+        fprintf(saida, "[%s] %d\n", config.tarefas[i].nome, morta);
+    }
+    
+    fclose(saida);
+    
+    return 0;
+}
