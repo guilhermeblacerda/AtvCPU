@@ -156,7 +156,95 @@ void simular_rate(ConfiguracaoEscalonador* config) {
         tempo_atual++;
     }
     
-    printf("\n=== RESULTADOS ===\n");
+    printf("\nRESULTADOS\n");
+    for (int i = 0; i < config->num_tarefas; i++) {
+        Tarefa* tarefa = &config->tarefas[i];
+        if (tarefa->ativa && tarefa->rajada_restante > 0) {
+            printf("[%s] Morta (não terminou até o fim da simulação)\n", tarefa->nome);
+        }
+        printf("[%s] Completou: %d, Perdidas: %d\n", 
+               tarefa->nome, tarefa->execucoes_completas, tarefa->prazos_perdidos);
+    }
+}
+
+int prioridade_edf(Tarefa* tarefa) {
+    return tarefa->prazo_absoluto;
+}
+
+void simular_edf(ConfiguracaoEscalonador* config) {
+    printf("SIMULAÇÃO EDF\n");
+    
+    int tempo_atual = 0;
+    Tarefa* tarefa_atual = NULL;
+    bool ocioso = true;
+    
+    while (tempo_atual < config->tempo_total) {
+        for (int i = 0; i < config->num_tarefas; i++) {
+            Tarefa* tarefa = &config->tarefas[i];
+            if (tempo_atual >= tarefa->proxima_chegada) {
+                if (!tarefa->ativa) {
+                    tarefa->ativa = true;
+                    tarefa->rajada_restante = tarefa->rajada;
+                    tarefa->prazo_absoluto = tempo_atual + tarefa->prazo;
+                }
+                tarefa->proxima_chegada += tarefa->periodo;
+            }
+        }
+        
+        for (int i = 0; i < config->num_tarefas; i++) {
+            Tarefa* tarefa = &config->tarefas[i];
+            if (tarefa->ativa && tempo_atual >= tarefa->prazo_absoluto && 
+                tarefa->rajada_restante > 0) {
+                tarefa->prazos_perdidos++;
+                tarefa->ativa = false;
+                tarefa->rajada_restante = 0;
+                printf("[%s] Perdeu prazo em t=%d\n", tarefa->nome, tempo_atual);
+            }
+        }
+        
+        Tarefa* tarefa_selecionada = NULL;
+        int melhor_prazo = -1;
+        
+        for (int i = 0; i < config->num_tarefas; i++) {
+            Tarefa* tarefa = &config->tarefas[i];
+            if (tarefa->ativa && tarefa->rajada_restante > 0) {
+                int prazo = prioridade_edf(tarefa);
+                if (tarefa_selecionada == NULL || prazo < melhor_prazo || 
+                    (prazo == melhor_prazo && i < tarefa_selecionada - config->tarefas)) {
+                    tarefa_selecionada = tarefa;
+                    melhor_prazo = prazo;
+                }
+            }
+        }
+        
+        if (tarefa_selecionada != NULL) {
+            if (tarefa_atual != tarefa_selecionada) {
+                printf("[%s] Executa em t=%d\n", tarefa_selecionada->nome, tempo_atual);
+                tarefa_atual = tarefa_selecionada;
+                ocioso = false;
+            }
+            
+            tarefa_selecionada->rajada_restante--;
+            if (tarefa_selecionada->rajada_restante == 0) {
+                tarefa_selecionada->execucoes_completas++;
+                tarefa_selecionada->ativa = false;
+                printf("[%s] Completou execução em t=%d\n", 
+                       tarefa_selecionada->nome, tempo_atual + 1);
+                tarefa_atual = NULL;
+                ocioso = true;
+            }
+        } else {
+            if (!ocioso) {
+                printf("ocioso em t=%d\n", tempo_atual);
+                ocioso = true;
+                tarefa_atual = NULL;
+            }
+        }
+        
+        tempo_atual++;
+    }
+    
+    printf("\nRESULTADOS\n");
     for (int i = 0; i < config->num_tarefas; i++) {
         Tarefa* tarefa = &config->tarefas[i];
         if (tarefa->ativa && tarefa->rajada_restante > 0) {
