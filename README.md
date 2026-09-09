@@ -23,6 +23,5 @@ Execução
 ././scheduler rate voo.txt
 
 OU
-```bash
 ./scheduler edf voo.txt
 ```
