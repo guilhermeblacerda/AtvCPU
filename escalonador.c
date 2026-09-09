@@ -83,12 +83,56 @@ int prioridade_rate(Tarefa* tarefa) {
     return tarefa->periodo;
 }
 
-void simular_rate(ConfiguracaoEscalonador* config) {
-    printf("SIMULAÇÃO RATE-MONOTONIC\n");
+void escrever_saida(const char* algoritmo, ConfiguracaoEscalonador* config,
+                   char* historico[], int tempos[], char status[], int num_eventos) {
+    char nome_arquivo[50];
+    sprintf(nome_arquivo, "%s_%s.out", algoritmo, config->login);
     
+    FILE* saida = fopen(nome_arquivo, "w");
+    if (!saida) {
+        fprintf(stderr, "Erro: Não foi possível criar %s\n", nome_arquivo);
+        return;
+    }
+    
+    fprintf(saida, "EXECUTION BY %s\n", algoritmo);
+    
+    int i;
+    for (i = 0; i < num_eventos; i++) {
+        if (strcmp(historico[i], "idle") == 0) {
+            fprintf(saida, "idle for %d units\n", tempos[i]);
+        } else {
+            fprintf(saida, "[%s] for %d units - %c\n", historico[i], tempos[i], status[i]);
+        }
+    }
+    
+    fprintf(saida, "\nLOST DEADLINES\n");
+    for (i = 0; i < config->num_tarefas; i++) {
+        fprintf(saida, "[%s] %d\n", config->tarefas[i].nome, config->tarefas[i].prazos_perdidos);
+    }
+    
+    fprintf(saida, "\nCOMPLETE EXECUTION\n");
+    for (i = 0; i < config->num_tarefas; i++) {
+        fprintf(saida, "[%s] %d\n", config->tarefas[i].nome, config->tarefas[i].execucoes_completas);
+    }
+    
+    fprintf(saida, "\nKILLED\n");
+    for (i = 0; i < config->num_tarefas; i++) {
+        int morta = (config->tarefas[i].ativa && config->tarefas[i].rajada_restante > 0) ? 1 : 0;
+        fprintf(saida, "[%s] %d\n", config->tarefas[i].nome, morta);
+    }
+    
+    fclose(saida);
+}
+
+void simular_rate(ConfiguracaoEscalonador* config) {
     int tempo_atual = 0;
     Tarefa* tarefa_atual = NULL;
-    bool ocioso = true;
+    int execucao_atual = 0;
+    char* historico[1000];
+    int tempos[1000];
+    char status[1000];
+    int num_eventos = 0;
+    bool idle_em_andamento = false;
     
     while (tempo_atual < config->tempo_total) {
         for (int i = 0; i < config->num_tarefas; i++) {
@@ -107,10 +151,18 @@ void simular_rate(ConfiguracaoEscalonador* config) {
             Tarefa* tarefa = &config->tarefas[i];
             if (tarefa->ativa && tempo_atual >= tarefa->prazo_absoluto && 
                 tarefa->rajada_restante > 0) {
+                if (tarefa_atual == tarefa && execucao_atual > 0) {
+                    historico[num_eventos] = strdup(tarefa->nome);
+                    tempos[num_eventos] = execucao_atual;
+                    status[num_eventos] = 'L';
+                    num_eventos++;
+                    execucao_atual = 0;
+                    tarefa_atual = NULL;
+                    idle_em_andamento = false;
+                }
                 tarefa->prazos_perdidos++;
                 tarefa->ativa = false;
                 tarefa->rajada_restante = 0;
-                printf("[%s] Perdeu prazo em t=%d\n", tarefa->nome, tempo_atual);
             }
         }
         
@@ -120,7 +172,7 @@ void simular_rate(ConfiguracaoEscalonador* config) {
         for (int i = 0; i < config->num_tarefas; i++) {
             Tarefa* tarefa = &config->tarefas[i];
             if (tarefa->ativa && tarefa->rajada_restante > 0) {
-                int prioridade = prioridade_rate(tarefa);
+                int prioridade = tarefa->periodo;
                 if (tarefa_selecionada == NULL || prioridade < melhor_prioridade || 
                     (prioridade == melhor_prioridade && i < tarefa_selecionada - config->tarefas)) {
                     tarefa_selecionada = tarefa;
@@ -131,40 +183,71 @@ void simular_rate(ConfiguracaoEscalonador* config) {
         
         if (tarefa_selecionada != NULL) {
             if (tarefa_atual != tarefa_selecionada) {
-                printf("[%s] Executa em t=%d\n", tarefa_selecionada->nome, tempo_atual);
+                if (tarefa_atual != NULL && execucao_atual > 0) {
+                    historico[num_eventos] = strdup(tarefa_atual->nome);
+                    tempos[num_eventos] = execucao_atual;
+                    status[num_eventos] = (tarefa_atual->rajada_restante > 0) ? 'H' : 'F';
+                    num_eventos++;
+                    execucao_atual = 0;
+                }
+                if (idle_em_andamento && execucao_atual > 0) {
+                    historico[num_eventos] = strdup("idle");
+                    tempos[num_eventos] = execucao_atual;
+                    status[num_eventos] = 'I';
+                    num_eventos++;
+                    execucao_atual = 0;
+                    idle_em_andamento = false;
+                }
                 tarefa_atual = tarefa_selecionada;
-                ocioso = false;
             }
             
             tarefa_selecionada->rajada_restante--;
+            execucao_atual++;
+            
             if (tarefa_selecionada->rajada_restante == 0) {
                 tarefa_selecionada->execucoes_completas++;
                 tarefa_selecionada->ativa = false;
-                printf("[%s] Completou execução em t=%d\n", 
-                       tarefa_selecionada->nome, tempo_atual + 1);
+                historico[num_eventos] = strdup(tarefa_selecionada->nome);
+                tempos[num_eventos] = execucao_atual;
+                status[num_eventos] = 'F';
+                num_eventos++;
+                execucao_atual = 0;
                 tarefa_atual = NULL;
-                ocioso = true;
             }
         } else {
-            if (!ocioso) {
-                printf("ocioso em t=%d\n", tempo_atual);
-                ocioso = true;
+            if (tarefa_atual != NULL && execucao_atual > 0) {
+                historico[num_eventos] = strdup(tarefa_atual->nome);
+                tempos[num_eventos] = execucao_atual;
+                status[num_eventos] = (tarefa_atual->rajada_restante > 0) ? 'H' : 'F';
+                num_eventos++;
+                execucao_atual = 0;
                 tarefa_atual = NULL;
+            }
+            
+            if (!idle_em_andamento) {
+                idle_em_andamento = true;
+                execucao_atual = 1;
+            } else {
+                execucao_atual++;
             }
         }
         
         tempo_atual++;
     }
     
-    printf("\nRESULTADOS\n");
-    for (int i = 0; i < config->num_tarefas; i++) {
-        Tarefa* tarefa = &config->tarefas[i];
-        if (tarefa->ativa && tarefa->rajada_restante > 0) {
-            printf("[%s] Morta (não terminou até o fim da simulação)\n", tarefa->nome);
-        }
-        printf("[%s] Completou: %d, Perdidas: %d\n", 
-               tarefa->nome, tarefa->execucoes_completas, tarefa->prazos_perdidos);
+    if (tarefa_atual != NULL && execucao_atual > 0) {
+        historico[num_eventos] = strdup(tarefa_atual->nome);
+        tempos[num_eventos] = execucao_atual;
+        status[num_eventos] = (tarefa_atual->rajada_restante > 0) ? 'H' : 'F';
+        num_eventos++;
+    } else if (idle_em_andamento && execucao_atual > 0) {
+        historico[num_eventos] = strdup("idle");
+        tempos[num_eventos] = execucao_atual;
+        status[num_eventos] = 'I';
+        num_eventos++;
     }
+    
+    escrever_saida("RATE", config, historico, tempos, status, num_eventos);
 }
 
 int prioridade_edf(Tarefa* tarefa) {
@@ -172,11 +255,14 @@ int prioridade_edf(Tarefa* tarefa) {
 }
 
 void simular_edf(ConfiguracaoEscalonador* config) {
-    printf("SIMULAÇÃO EDF\n");
-    
     int tempo_atual = 0;
     Tarefa* tarefa_atual = NULL;
-    bool ocioso = true;
+    int execucao_atual = 0;
+    char* historico[1000];
+    int tempos[1000];
+    char status[1000];
+    int num_eventos = 0;
+    bool idle_em_andamento = false;
     
     while (tempo_atual < config->tempo_total) {
         for (int i = 0; i < config->num_tarefas; i++) {
@@ -195,10 +281,18 @@ void simular_edf(ConfiguracaoEscalonador* config) {
             Tarefa* tarefa = &config->tarefas[i];
             if (tarefa->ativa && tempo_atual >= tarefa->prazo_absoluto && 
                 tarefa->rajada_restante > 0) {
+                if (tarefa_atual == tarefa && execucao_atual > 0) {
+                    historico[num_eventos] = strdup(tarefa->nome);
+                    tempos[num_eventos] = execucao_atual;
+                    status[num_eventos] = 'L';
+                    num_eventos++;
+                    execucao_atual = 0;
+                    tarefa_atual = NULL;
+                    idle_em_andamento = false;
+                }
                 tarefa->prazos_perdidos++;
                 tarefa->ativa = false;
                 tarefa->rajada_restante = 0;
-                printf("[%s] Perdeu prazo em t=%d\n", tarefa->nome, tempo_atual);
             }
         }
         
@@ -208,7 +302,7 @@ void simular_edf(ConfiguracaoEscalonador* config) {
         for (int i = 0; i < config->num_tarefas; i++) {
             Tarefa* tarefa = &config->tarefas[i];
             if (tarefa->ativa && tarefa->rajada_restante > 0) {
-                int prazo = prioridade_edf(tarefa);
+                int prazo = tarefa->prazo_absoluto;
                 if (tarefa_selecionada == NULL || prazo < melhor_prazo || 
                     (prazo == melhor_prazo && i < tarefa_selecionada - config->tarefas)) {
                     tarefa_selecionada = tarefa;
@@ -219,43 +313,72 @@ void simular_edf(ConfiguracaoEscalonador* config) {
         
         if (tarefa_selecionada != NULL) {
             if (tarefa_atual != tarefa_selecionada) {
-                printf("[%s] Executa em t=%d\n", tarefa_selecionada->nome, tempo_atual);
+                if (tarefa_atual != NULL && execucao_atual > 0) {
+                    historico[num_eventos] = strdup(tarefa_atual->nome);
+                    tempos[num_eventos] = execucao_atual;
+                    status[num_eventos] = (tarefa_atual->rajada_restante > 0) ? 'H' : 'F';
+                    num_eventos++;
+                    execucao_atual = 0;
+                }
+                if (idle_em_andamento && execucao_atual > 0) {
+                    historico[num_eventos] = strdup("idle");
+                    tempos[num_eventos] = execucao_atual;
+                    status[num_eventos] = 'I';
+                    num_eventos++;
+                    execucao_atual = 0;
+                    idle_em_andamento = false;
+                }
                 tarefa_atual = tarefa_selecionada;
-                ocioso = false;
             }
             
             tarefa_selecionada->rajada_restante--;
+            execucao_atual++;
+            
             if (tarefa_selecionada->rajada_restante == 0) {
                 tarefa_selecionada->execucoes_completas++;
                 tarefa_selecionada->ativa = false;
-                printf("[%s] Completou execução em t=%d\n", 
-                       tarefa_selecionada->nome, tempo_atual + 1);
+                historico[num_eventos] = strdup(tarefa_selecionada->nome);
+                tempos[num_eventos] = execucao_atual;
+                status[num_eventos] = 'F';
+                num_eventos++;
+                execucao_atual = 0;
                 tarefa_atual = NULL;
-                ocioso = true;
             }
         } else {
-            if (!ocioso) {
-                printf("ocioso em t=%d\n", tempo_atual);
-                ocioso = true;
+            if (tarefa_atual != NULL && execucao_atual > 0) {
+                historico[num_eventos] = strdup(tarefa_atual->nome);
+                tempos[num_eventos] = execucao_atual;
+                status[num_eventos] = (tarefa_atual->rajada_restante > 0) ? 'H' : 'F';
+                num_eventos++;
+                execucao_atual = 0;
                 tarefa_atual = NULL;
+            }
+            
+            if (!idle_em_andamento) {
+                idle_em_andamento = true;
+                execucao_atual = 1;
+            } else {
+                execucao_atual++;
             }
         }
         
         tempo_atual++;
     }
     
-    printf("\nRESULTADOS\n");
-    for (int i = 0; i < config->num_tarefas; i++) {
-        Tarefa* tarefa = &config->tarefas[i];
-        if (tarefa->ativa && tarefa->rajada_restante > 0) {
-            printf("[%s] Morta (não terminou até o fim da simulação)\n", tarefa->nome);
-        }
-        printf("[%s] Completou: %d, Perdidas: %d\n", 
-               tarefa->nome, tarefa->execucoes_completas, tarefa->prazos_perdidos);
+    if (tarefa_atual != NULL && execucao_atual > 0) {
+        historico[num_eventos] = strdup(tarefa_atual->nome);
+        tempos[num_eventos] = execucao_atual;
+        status[num_eventos] = (tarefa_atual->rajada_restante > 0) ? 'H' : 'F';
+        num_eventos++;
+    } else if (idle_em_andamento && execucao_atual > 0) {
+        historico[num_eventos] = strdup("idle");
+        tempos[num_eventos] = execucao_atual;
+        status[num_eventos] = 'I';
+        num_eventos++;
     }
+    
+    escrever_saida("EDF", config, historico, tempos, status, num_eventos);
 }
-
-#include "escalonador.h"
 
 int main(int argc, char* argv[]) {
     if (argc != 3) {
@@ -270,11 +393,8 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     
-    char login[10];
-    strcpy(login, "mla");
-    
     ConfiguracaoEscalonador config;
-    strcpy(config.login, login);
+    strcpy(config.login, "gbl2");
     
     if (!ler_configuracao(argv[2], &config)) {
         return 1;
@@ -285,38 +405,6 @@ int main(int argc, char* argv[]) {
     } else {
         simular_edf(&config);
     }
-    
-    char nome_arquivo_saida[50];
-    sprintf(nome_arquivo_saida, "%s_%s.out", algoritmo, login);
-    
-    FILE* saida = fopen(nome_arquivo_saida, "w");
-    if (!saida) {
-        fprintf(stderr, "Erro: Não foi possível criar arquivo de saída\n");
-        return 1;
-    }
-    
-    fprintf(saida, "EXECUTION BY %s\n", algoritmo);
-    
-    fprintf(saida, "\nLOST DEADLINES\n");
-    for (int i = 0; i < config.num_tarefas; i++) {
-        fprintf(saida, "[%s] %d\n", config.tarefas[i].nome, 
-                config.tarefas[i].prazos_perdidos);
-    }
-    
-    fprintf(saida, "\nCOMPLETE EXECUTION\n");
-    for (int i = 0; i < config.num_tarefas; i++) {
-        fprintf(saida, "[%s] %d\n", config.tarefas[i].nome, 
-                config.tarefas[i].execucoes_completas);
-    }
-    
-    fprintf(saida, "\nKILLED\n");
-    for (int i = 0; i < config.num_tarefas; i++) {
-        int morta = (config.tarefas[i].ativa && 
-                     config.tarefas[i].rajada_restante > 0) ? 1 : 0;
-        fprintf(saida, "[%s] %d\n", config.tarefas[i].nome, morta);
-    }
-    
-    fclose(saida);
     
     return 0;
 }
