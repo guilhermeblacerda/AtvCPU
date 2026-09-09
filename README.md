@@ -20,7 +20,7 @@ make
 
 Execução
 ```bash
-././scheduler rate voo.txt
+./scheduler rate voo.txt
 
 OU
 ./scheduler edf voo.txt
