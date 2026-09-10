@@ -1,0 +1,75 @@
+EXECUTION BY RATE
+[ATT] for 8 units - F
+[NAV] for 12 units - H
+[ATT] for 8 units - F
+[NAV] for 2 units - L
+idle for 10 units
+[ATT] for 8 units - F
+idle for 2 units
+[NAV] for 10 units - H
+[ATT] for 8 units - F
+[NAV] for 5 units - F
+idle for 7 units
+[ATT] for 8 units - F
+idle for 12 units
+
+LOST DEADLINES
+[ATT] 0
+[NAV] 1
+
+COMPLETE EXECUTION
+[ATT] 5
+[NAV] 1
+
+KILLED
+[ATT] 0
+[NAV] 0
+
+EXECUTION BY EDF
+[ATT] for 8 units - F
+[NAV] for 15 units - F
+[ATT] for 8 units - F
+idle for 9 units
+[ATT] for 8 units - F
+idle for 2 units
+[NAV] for 10 units - H
+[ATT] for 8 units - F
+[NAV] for 5 units - F
+idle for 7 units
+[ATT] for 8 units - F
+idle for 12 units
+
+LOST DEADLINES
+[ATT] 0
+[NAV] 0
+
+COMPLETE EXECUTION
+[ATT] 5
+[NAV] 2
+
+KILLED
+[ATT] 0
+[NAV] 0
+
+SIMULAÇÃO RATE-MONOTONIC
+[ATT] Executa em t=0
+[ATT] Completou execução em t=8
+[NAV] Executa em t=8
+[ATT] Executa em t=20
+[ATT] Completou execução em t=28
+[NAV] Executa em t=28
+[NAV] Perdeu prazo em t=30
+ocioso em t=30
+[ATT] Executa em t=40
+[ATT] Completou execução em t=48
+[NAV] Executa em t=50
+[ATT] Executa em t=60
+[ATT] Completou execução em t=68
+[NAV] Executa em t=68
+[NAV] Completou execução em t=73
+[ATT] Executa em t=80
+[ATT] Completou execução em t=88
+
+RESULTADOS
+[ATT] Completou: 5, Perdidas: 0
+[NAV] Completou: 1, Perdidas: 1
